@@ -63,14 +63,15 @@ class rampedParabolicInletFvPatchVectorField
 {
     // Private data
 
-       //- Inlet profile parameters
-       scalar Ubar_;        // average velocity
-       scalar Ufactor_;     // scales the maximum velocity
-       scalar H_;           // channel height
+        //- Inlet profile parameters
+        scalar Ubar_;           // average velocity
+        scalar Ufactor_;        // scales the maximum velocity
+        scalar H_;              // channel height
+        bool fluxCorrection_;   // if true, set velocity for cell based on averaged flux
+                                // rather than the cell-centered position
 
-       //- Ramping period
-       scalar rampT_;       // inlet profile constant after this period
-
+        //- Ramping period
+        scalar rampT_;       // inlet profile constant after this period
 
     // Private Member Functions
 

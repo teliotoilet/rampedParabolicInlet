@@ -60,6 +60,7 @@ rampedParabolicInletFvPatchVectorField
     Ubar_(1.0),
     Ufactor_(1.5),
     H_(1.0),
+    fluxCorrection_(false),
     rampT_(1.0)
 {}
 
@@ -77,6 +78,7 @@ rampedParabolicInletFvPatchVectorField
     Ubar_(ptf.Ubar_),
     Ufactor_(ptf.Ufactor_),
     H_(ptf.H_),
+    fluxCorrection_(ptf.fluxCorrection_),
     rampT_(ptf.rampT_)
 {}
 
@@ -93,6 +95,7 @@ rampedParabolicInletFvPatchVectorField
     Ubar_(dict.lookupOrDefault<scalar>("Ubar",1.0)),
     Ufactor_(dict.lookupOrDefault<scalar>("Ufactor",1.5)),
     H_(dict.lookupOrDefault<scalar>("H",1.0)),
+    fluxCorrection_(dict.lookupOrDefault<bool>("fluxCorrection",false)),
     rampT_(dict.lookupOrDefault<scalar>("ramp",1.0))
 {
     fvPatchVectorField::operator=(vectorField("value", dict, p.size()));
@@ -109,6 +112,7 @@ rampedParabolicInletFvPatchVectorField
     Ubar_(pvf.Ubar_),
     Ufactor_(pvf.Ufactor_),
     H_(pvf.H_),
+    fluxCorrection_(pvf.fluxCorrection_),
     rampT_(pvf.rampT_)
 {}
 
@@ -124,6 +128,7 @@ rampedParabolicInletFvPatchVectorField
     Ubar_(pvf.Ubar_),
     Ufactor_(pvf.Ufactor_),
     H_(pvf.H_),
+    fluxCorrection_(pvf.fluxCorrection_),
     rampT_(pvf.rampT_)
 {}
 
@@ -141,18 +146,52 @@ void Foam::rampedParabolicInletFvPatchVectorField::updateCoeffs()
     const polyPatch& pp = p.patch();
     const vectorField xc = pp.faceCentres();
 
-//    const scalarField y( pp.faceCentres() & 
-//
-//    vectorField::operator=( Ufactor_*Ubar_ * y*(H_-y) / (H_*H_/4) );
-
     scalar ramp = currentScale();
     //Info<< "Parabolic inlet ramping factor = " << ramp << endl;
 
-    forAll(*this, i)
+    if (fluxCorrection_) // set average velocity over face
+    { 
+        const labelListList& faceToEdgeIndex = pp.faceEdges();
+        const edgeList& edges = pp.edges();
+        const pointField& pts = pp.localPoints();
+        forAll(*this, i)
+        {
+            //--faceToEdgeIndex returns a list of edges for each face i
+            scalar ymin(9e9);
+            scalar ymax(-9e9);
+            forAll(faceToEdgeIndex[i],iedge)
+            {
+                //Info<< "  edge " << iedge << " : " << edges[faceToEdgeIndex[i][iedge]] << endl;
+                //--e is the two local points associated with the current edge iedge
+                edge e = edges[faceToEdgeIndex[i][iedge]];
+                //Info<< "  edge " << iedge << " " << e 
+                //    << " : " << pts[e[0]]
+                //    << " , " << pts[e[1]] << endl;
+                if (pts[e[0]].component(1) != pts[e[1]].component(1))
+                {
+                    ymin = min( pts[e[0]].component(1), pts[e[1]].component(1) );
+                    ymax = max( pts[e[0]].component(1), pts[e[1]].component(1) );
+                    break;
+                }
+
+            }
+            //Info<< "face " << i << " ymin/max : " << ymin << " " << ymax << endl;
+
+            //this->operator[](i).component(0) = ramp * Ufactor_*Ubar_ * y*(H_-y) / (H_*H_/4);
+            this->operator[](i).component(0) = 
+                ( H_/2*(ymax*ymax - ymin*ymin) - 1.0/3.0*(Foam::pow3(ymax) - Foam::pow3(ymin)) )
+                / (ymax-ymin);
+            this->operator[](i).component(0) *= ramp * Ufactor_*Ubar_ / (H_*H_/4);
+        }
+    }
+    else // set velocity based on face center
     {
-        scalar y( xc[i].component(1) );
-        //this->operator[](i).component(0) = Ufactor_*Ubar_ * y*(H_-y) / (H_*H_/4);
-        this->operator[](i).component(0) = ramp * Ufactor_*Ubar_ * y*(H_-y) / (H_*H_/4);
+        forAll(*this, i)
+        {
+            scalar y( xc[i].component(1) );
+            //this->operator[](i).component(0) = Ufactor_*Ubar_ * y*(H_-y) / (H_*H_/4);
+            this->operator[](i).component(0) = ramp * Ufactor_*Ubar_ * y*(H_-y) / (H_*H_/4);
+        }
     }
 
     fixedValueFvPatchVectorField::updateCoeffs();
@@ -165,6 +204,7 @@ void Foam::rampedParabolicInletFvPatchVectorField::write(Ostream& os) const
     os.writeKeyword("Ubar") << Ubar_ << token::END_STATEMENT << nl;
     os.writeKeyword("Ufactor") << Ufactor_ << token::END_STATEMENT << nl;
     os.writeKeyword("H") << H_ << token::END_STATEMENT << nl;
+    os.writeKeyword("fluxCorrection") << fluxCorrection_ << token::END_STATEMENT << nl;
     os.writeKeyword("ramp") << rampT_ << token::END_STATEMENT << nl;
     writeEntry("value", os);
 }
